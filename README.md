@@ -78,8 +78,12 @@ python release.py stage --input downloaded-sdk-assets --output approved-sdk --co
 
 The automated tests use deliberate miniature fixtures; they do not build SDKs
 locally. Real native compilation and binary consumer qualification run in CI.
-If compilation fails, reproduce in the private repository to inspect diagnostics.
-Do not add public compiler logs to troubleshoot a private build.
+Expected audit failures report only fixed public rule labels, never rejected
+file names or contents. Unexpected parser errors remain generic. PEM detection
+requires encoded key material and a matching end marker; a cryptographic format
+marker embedded in Godot is not itself a key. If compilation fails, reproduce
+in the private repository to inspect diagnostics. Do not add public compiler
+logs to troubleshoot a private build.
 
 Automation in this repository is AGPL-3.0-only. SDK components retain their own
 licences and required notices; this repository's licence does not relicense them.

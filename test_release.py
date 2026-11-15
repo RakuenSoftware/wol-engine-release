@@ -124,6 +124,28 @@ class ReleaseBoundaryTests(unittest.TestCase):
             self.assertEqual(result.stdout, '')
             self.assertNotIn('Traceback', result.stderr)
 
+    def test_pem_format_markers_are_not_keys_but_encoded_key_blocks_are_rejected(self):
+        header = b'-----BEGIN PRIVATE KEY-----'
+        name = 'editor/Godot_v4.7.2-stable_mono_linux.x86_64'
+        SDKRelease.check_sdk(self.sdk(extra={name: b'\x7fELF' + header + b'\x00'}), self.commit, 'linux-x64')
+        for kind in (b'PRIVATE KEY', b'RSA PRIVATE KEY', b'EC PRIVATE KEY', b'OPENSSH PRIVATE KEY', b'ENCRYPTED PRIVATE KEY'):
+            payload = b'-----BEGIN ' + kind + b'-----\n' + b'A' * 64 + b'\n-----END ' + kind + b'-----\n'
+            with self.subTest(kind=kind), self.assertRaises(SDKRelease.PolicyError):
+                SDKRelease.check_sdk(self.sdk(extra={name: b'\x7fELF' + payload}), self.commit, 'linux-x64')
+
+    def test_cli_reports_fixed_audit_rules_without_echoing_rejected_content(self):
+        archive = self.sdk(extra={'runtime/Secret.cs': b'PRIVATE_FIXTURE_CONTENT'})
+        command = [sys.executable, str(Path(__file__).with_name('release.py').resolve()), 'stage',
+                   '--input', str(self.root), '--output', str(self.root / 'approved'), '--commit', self.commit, '--target', 'linux-x64']
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Nonempty C# implementation in SDK', result.stderr)
+        self.assertEqual(result.stdout, '')
+        self.assertNotIn('Secret.cs', result.stderr)
+        self.assertNotIn('PRIVATE_FIXTURE_CONTENT', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+        self.assertFalse((self.root / 'approved').exists())
+
     def test_repository_history_keeps_deleted_source_visible_to_the_audit(self):
         repo = self.root / 'repo'; repo.mkdir()
         subprocess.run(['git', 'init', '-q', str(repo)], check=True)
