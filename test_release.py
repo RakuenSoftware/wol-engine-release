@@ -33,6 +33,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
         files = {'WolEngine.props': b'<Project/>', 'GodotApi.props': b'<Project/>', 'native/spatial.gdextension': b'[configuration]',
                  f'native/bin/libspatial.{platform}.template_release.{arch}.{extension}': native,
                  'managed/Debug/WolEngine.dll': managed or self.pe, 'managed/Release/WolEngine.dll': managed or self.pe,
+                 'portable/WolEngine.Core.props': b'<Project/>', 'portable/Debug/WolEngine.Core.dll': self.pe, 'portable/Release/WolEngine.Core.dll': self.pe,
                  editor: native, 'runtime/PublicIdentity.cs': b'\n'}
         files.update(extra or {})
         manifest = {'schema': 1, 'godot': '4.7.2', 'target': target, 'commit': self.commit, 'editor': editor,
@@ -73,6 +74,21 @@ class ReleaseBoundaryTests(unittest.TestCase):
         with zipfile.ZipFile(nested, 'w') as packed: packed.writestr('Engine.cs', b'namespace Wol.Engine;')
         with self.assertRaises(ValueError):
             SDKRelease.check_sdk(self.sdk(extra={'editor/GodotSharp/Tools/nupkgs/Godot.NET.Sdk.4.7.2.nupkg': nested.getvalue()}), self.commit, 'linux-x64')
+
+    def test_portable_core_uses_the_same_source_and_symbol_boundary(self):
+        for name, payload in [('portable/Release/WolEngine.Core.cs', b'namespace Wol.Engine;'),
+                              ('portable/Release/WolEngine.Core.pdb', b'symbols'),
+                              ('portable/Release/Extra.dll', self.pe),
+                              ('portable/Release/WolEngine.Core.dll', b'source disguised as a DLL')]:
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                SDKRelease.check_sdk(self.sdk(extra={name: payload}), self.commit, 'linux-x64')
+        pe = bytearray(self.pe) + bytearray(128)
+        struct.pack_into('<H', pe, 134, 1)
+        struct.pack_into('<II', pe, 152 + 112 + 48, 0x1000, 28)
+        struct.pack_into('<IIII', pe, 392 + 8, 128, 0x1000, 128, 512)
+        struct.pack_into('<I', pe, 512 + 12, 17)
+        with self.assertRaises(ValueError):
+            SDKRelease.check_sdk(self.sdk(extra={'portable/Debug/WolEngine.Core.dll': bytes(pe)}), self.commit, 'linux-x64')
 
     def test_credentials_checksum_and_unexpected_manifest_fields_are_rejected(self):
         credential = b'github_' + b'pat_' + b'x' * 24

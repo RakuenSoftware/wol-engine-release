@@ -87,3 +87,8 @@ logs to troubleshoot a private build.
 
 Automation in this repository is AGPL-3.0-only. SDK components retain their own
 licences and required notices; this repository's licence does not relicense them.
+
+The portable core is published only as `portable/{Debug,Release}/WolEngine.Core.dll`
+and its reference props. These DLLs use the same PE/debug-directory audit as the
+backend. The allowlist grants no permission for core source, symbols, extra
+assemblies or build output; the existing source and log exclusions still apply.

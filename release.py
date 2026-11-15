@@ -88,7 +88,8 @@ class SDKRelease:
         native_platform, arch, extension = cls.TARGETS[target]
         required = {"WolEngine.props", "GodotApi.props", "native/spatial.gdextension",
                     f"native/bin/libspatial.{native_platform}.template_release.{arch}.{extension}",
-                    "managed/Debug/WolEngine.dll", "managed/Release/WolEngine.dll"}
+                    "managed/Debug/WolEngine.dll", "managed/Release/WolEngine.dll",
+                    "portable/Debug/WolEngine.Core.dll", "portable/Release/WolEngine.Core.dll", "portable/WolEngine.Core.props"}
         editor = {"linux-x64": "editor/Godot_v4.7.2-stable_mono_linux.x86_64",
                   "windows-x64": "editor/Godot_v4.7.2-stable_mono_win64.exe",
                   "macos-universal": "editor/Godot.app/Contents/MacOS/Godot"}[target]
@@ -150,7 +151,7 @@ class SDKRelease:
                     raise cls.PolicyError("Nonempty C# implementation in SDK")
                 if suffix in {".dll", ".exe"} and not data.startswith(b"MZ"):
                     raise cls.PolicyError("Invalid PE binary")
-                if name.startswith("managed/"):
+                if suffix == ".dll" and name.startswith(("managed/", "portable/")):
                     # Owned assemblies must not embed portable PDBs or CodeView paths.
                     pe = struct.unpack_from("<I", data, 0x3c)[0]
                     if data[pe:pe + 4] != b"PE\0\0":
