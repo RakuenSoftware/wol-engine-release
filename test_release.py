@@ -91,6 +91,22 @@ class ReleaseBoundaryTests(unittest.TestCase):
         with archive.with_suffix('.zip.sha256').open('a') as stream: stream.write('private diagnostic text')
         with self.assertRaises(ValueError): SDKRelease.check_sdk(archive, self.commit, 'linux-x64')
 
+    def test_release_requests_and_manual_overrides_require_exact_commits(self):
+        directory = self.root / '.github'; directory.mkdir()
+        request = directory / 'sdk-release.json'
+        request.write_text(json.dumps({'engine_commit': self.commit}))
+        self.assertEqual(SDKRelease.requested_commit(self.root), self.commit)
+        self.assertEqual(SDKRelease.requested_commit(self.root, 'b' * 40), 'b' * 40)
+        for data in ({'engine_commit': 'main'}, {'engine_commit': self.commit + '/extra'},
+                     {'engine_commit': self.commit.upper()}, {'engine_commit': self.commit, 'command': 'extra'},
+                     {'engine_commit': None}, ['unexpected']):
+            request.write_text(json.dumps(data))
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                SDKRelease.requested_commit(self.root)
+        for value in ('', 'main', 'a' * 39, 'a' * 40 + '\n'):
+            with self.subTest(override=value), self.assertRaises(ValueError):
+                SDKRelease.requested_commit(self.root, value)
+
     def test_repository_history_keeps_deleted_source_visible_to_the_audit(self):
         repo = self.root / 'repo'; repo.mkdir()
         subprocess.run(['git', 'init', '-q', str(repo)], check=True)

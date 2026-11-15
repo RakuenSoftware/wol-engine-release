@@ -11,8 +11,9 @@ repository's Releases page.
 - Public Git history contains only the explicitly allowed automation, tests,
   documentation and licence files. The audit checks all reachable history, so
   deleting a forbidden file in a later commit does not make it acceptable.
-- Only a manual run of the workflow on `main` can access the source credential.
-  Pull request checks never receive it. Maintainers who can change `main` or
+- Merging a reviewed change to `.github/sdk-release.json` into `main` starts
+  the native release builds. Manual runs on `main` are also available.
+  Pull request checks never receive the source credential. Maintainers who can change `main` or
   workflows are trusted with this credential; review those changes accordingly.
 - Each fresh GitHub-hosted Linux, Windows and Mac runner temporarily checks out
   an exact private `runtime-<40-character SHA>` tag into a separate sibling
@@ -47,7 +48,13 @@ for software that users execute.
    workflow inputs, commits or logs. Keep automatic pull request reviews enabled.
 3. Merge this repository's reviewed automation to `main`. Create a private
    engine tag `runtime-<full commit SHA>` for the reviewed source to build.
-4. Run **Build and publish binary SDKs** on `main` with that exact commit SHA.
+4. Open a PR updating `.github/sdk-release.json` to that exact commit SHA.
+   The PR validates the request and publication policy without private source
+   access. Merging it into `main` automatically starts all three native builds.
+   This repository's initial request selects the already-tagged engine revision
+   `8fd3e8780c985721730855396de987e59e268fcf`.
+   Manual **Build and publish binary SDKs** runs on `main` remain available for
+   retries, using the same exact commit SHA.
    All three native-host SDK jobs must pass. The release contains three ZIP
    archives and their checksum records; GitHub's automatic source archives
    contain only this public automation repository.

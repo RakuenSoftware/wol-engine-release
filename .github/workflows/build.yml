@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 name: Build and publish binary SDKs
 on:
+  push:
+    branches: [main]
+    paths: ['.github/sdk-release.json']
   workflow_dispatch:
     inputs:
       engine_commit:
@@ -9,11 +12,39 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: sdk-${{ inputs.engine_commit }}
+  group: sdk-${{ inputs.engine_commit || github.sha }}
   cancel-in-progress: false
 jobs:
-  build:
+  request:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    outputs:
+      commit: ${{ steps.revision.outputs.commit }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Audit the reviewed release request
+        run: python release.py check-repository
+      - name: Resolve the requested engine revision
+        id: revision
+        env:
+          REQUESTED_ENGINE_COMMIT: ${{ inputs.engine_commit }}
+          REQUEST_EVENT: ${{ github.event_name }}
+        shell: python
+        run: |
+          import os
+          from release import SDKRelease
+          override = os.environ['REQUESTED_ENGINE_COMMIT'] if os.environ['REQUEST_EVENT'] == 'workflow_dispatch' else None
+          commit = SDKRelease.requested_commit('.', override)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('commit=' + commit + '\n')
+  build:
+    needs: request
     strategy:
       fail-fast: false
       matrix:
@@ -26,7 +57,7 @@ jobs:
             target: macos-universal
     runs-on: ${{ matrix.os }}
     env:
-      ENGINE_COMMIT: ${{ inputs.engine_commit }}
+      ENGINE_COMMIT: ${{ needs.request.outputs.commit }}
       SDK_TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -46,7 +77,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: RakuenSoftware/wol-engine
-          ref: runtime-${{ inputs.engine_commit }}
+          ref: runtime-${{ needs.request.outputs.commit }}
           token: ${{ secrets.ENGINE_SOURCE_TOKEN }}
           path: private-engine
           submodules: recursive
@@ -105,12 +136,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   publish:
-    needs: build
+    needs: [request, build]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     env:
-      ENGINE_COMMIT: ${{ inputs.engine_commit }}
+      ENGINE_COMMIT: ${{ needs.request.outputs.commit }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

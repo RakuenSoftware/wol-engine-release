@@ -20,15 +20,28 @@ class SDKRelease:
                "windows-x64": ("windows", "x86_64", "dll"),
                "macos-universal": ("macos", "universal", "dylib")}
     PUBLIC_FILES = {"LICENSE", "README.md", "SECURITY.md", "AGENTS.md", ".gitignore", "release.py",
-                    "test_release.py", ".github/workflows/build.yml", ".github/workflows/audit.yml"}
+                    "test_release.py", ".github/sdk-release.json", ".github/workflows/build.yml", ".github/workflows/audit.yml"}
     FORBIDDEN = {".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx", ".gd", ".gdshader", ".gdshaderinc",
                  ".glsl", ".hlsl", ".shader", ".pdb", ".snupkg", ".csproj", ".sln", ".map", ".py", ".sh", ".ps1", ".js", ".ts", ".rs", ".log"}
     SOURCE_TEXT = re.compile(rb'(?m)^\s*(?:namespace\s+Wol\.Engine\b|(?:public|internal)\s+(?:(?:partial|sealed|static|abstract)\s+)*(?:class|struct|interface|record)\s+\w+|shader_type\s+\w+\s*;|void\s+(?:vertex|fragment)\s*\(|#include\s*[<"])')
     SECRET_TEXT = re.compile(rb'(?:-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----|github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,})')
 
     @classmethod
+    def requested_commit(cls, root, override=None):
+        if override is None:
+            request = json.loads((Path(root) / ".github/sdk-release.json").read_text())
+            if not isinstance(request, dict) or set(request) != {"engine_commit"}:
+                raise ValueError("Unexpected release request fields")
+            override = request["engine_commit"]
+        if not isinstance(override, str) or not re.fullmatch(r"[0-9a-f]{40}", override):
+            raise ValueError("Release requests require a full engine commit")
+        return override
+
+    @classmethod
     def check_repository(cls, root):
         root = Path(root)
+        if (root / ".github/sdk-release.json").exists():
+            cls.requested_commit(root)
         paths = set(subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode().split("\0")) - {""}
         revisions = subprocess.check_output(["git", "rev-list", "--all"], cwd=root).decode().splitlines()
         for revision in revisions:
