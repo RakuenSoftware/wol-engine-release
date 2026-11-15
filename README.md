@@ -1,1 +1,75 @@
-# wol-engine-release
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+# WoL Engine binary releases
+
+This public repository owns build automation and binary SDK publication. The
+engine implementation stays in the private `RakuenSoftware/wol-engine`
+repository. Project Vagrant vendors the downloaded SDK archives from this
+repository's Releases page.
+
+## Publication boundary
+
+- Public Git history contains only the explicitly allowed automation, tests,
+  documentation and licence files. The audit checks all reachable history, so
+  deleting a forbidden file in a later commit does not make it acceptable.
+- Only a manual run of the workflow on `main` can access the source credential.
+  Pull request checks never receive it. Maintainers who can change `main` or
+  workflows are trusted with this credential; review those changes accordingly.
+- Each fresh GitHub-hosted Linux, Windows and Mac runner temporarily checks out
+  an exact private `runtime-<40-character SHA>` tag into a separate sibling
+  directory. The tag's resolved commit must match the requested SHA.
+- Compiler output goes to a temporary private file. Failure reports are generic.
+  The workflow removes the source checkout and compiler output before uploading
+  anything. There are no build caches, source artifacts or diagnostic uploads.
+- The publication audit verifies archive identity, provenance, every file hash,
+  platform binary formats and a restricted file inventory. It rejects nonempty
+  C# files, loose shaders, implementation source, debug/symbol packages,
+  credentials and logs. Checksum files must contain only their exact checksum
+  record. Godot dependency packages are also inspected.
+- Only approved ZIP archives and SHA-256 records reach the artifact service.
+  A separate publishing job has no private source credential and independently
+  audits all three platforms before creating a release. Any failed platform or
+  audit prevents publication.
+
+SDKs intentionally include empty C# resource identity stubs, engine branding,
+Godot scene resources, licence notices and compiled managed/native binaries.
+Compiled code can be inspected or decompiled. Shader programs are compiled into
+the managed assembly and can also be recovered from it. This boundary prevents
+shipping loose implementation source; it does not provide irreversible secrecy
+for software that users execute.
+
+## Enable builds
+
+1. Merge the private engine packaging changes that remove loose shader sources
+   and support `--release-repository RakuenSoftware/wol-engine-release`.
+2. Configure the repository Actions secret `ENGINE_SOURCE_TOKEN` with a
+   fine-grained credential granting **Contents: read** only on the private
+   `RakuenSoftware/wol-engine` repository. Do not paste credentials into issues,
+   workflow inputs, commits or logs. Keep automatic pull request reviews enabled.
+3. Merge this repository's reviewed automation to `main`. Create a private
+   engine tag `runtime-<full commit SHA>` for the reviewed source to build.
+4. Run **Build and publish binary SDKs** on `main` with that exact commit SHA.
+   All three native-host SDK jobs must pass. The release contains three ZIP
+   archives and their checksum records; GitHub's automatic source archives
+   contain only this public automation repository.
+5. Download those release assets and vendor them into Project Vagrant with its
+   existing `tools/release.py --vendor-runtime` command.
+
+The first build must use the new packager. Existing SDKs containing loose shader
+files are deliberately rejected. Old downloads are not retroactively removed
+by this pipeline.
+
+## Verification
+
+```sh
+python -m unittest -v test_release
+python release.py check-repository
+python release.py stage --input downloaded-sdk-assets --output approved-sdk --commit FULL_SHA
+```
+
+The automated tests use deliberate miniature fixtures; they do not build SDKs
+locally. Real native compilation and binary consumer qualification run in CI.
+If compilation fails, reproduce in the private repository to inspect diagnostics.
+Do not add public compiler logs to troubleshoot a private build.
+
+Automation in this repository is AGPL-3.0-only. SDK components retain their own
+licences and required notices; this repository's licence does not relicense them.
