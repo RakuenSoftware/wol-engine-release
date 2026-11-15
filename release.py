@@ -107,13 +107,15 @@ class SDKRelease:
                 allowed |= bool(re.fullmatch(r"\.dependencies/godot-api/api/(Debug|Release)/GodotSharp(?:Editor)?\.dll", name))
                 allowed |= bool(re.fullmatch(r"licenses/[A-Za-z0-9_.-]+\.(?:txt|md)", name))
                 allowed |= name == "runtime/display/graphics_settings.tscn"
-                allowed |= bool(re.fullmatch(r"runtime/branding/(?:wol_icon\.(?:png|svg)|wol_splash\.(?:png|svg)|README\.md)", name))
+                allowed |= bool(re.fullmatch(r"runtime/branding/(?:wol_icon\.(?:png|svg)|wol_splash\.(?:png|svg)|wol\.svg|README\.md)", name))
                 allowed |= name.startswith("runtime/") and (name.endswith(".cs") or name.endswith(".cs.uid") or name == "runtime/display/graphics_settings.tscn.uid")
                 if name.startswith("editor/"):
                     allowed |= suffix in {".dll", ".exe", ".json", ".nupkg", ".icns", ".car", ".plist", ".strings"}
                     allowed |= name in {"editor/Godot_v4.7.2-stable_mono_linux.x86_64", "editor/Godot.app/Contents/MacOS/Godot", "editor/Godot.app/Contents/PkgInfo", "editor/Godot.app/Contents/CodeResources", "editor/Godot.app/Contents/_CodeSignature/CodeResources"}
                     if suffix == ".nupkg":
                         allowed = bool(re.search(r"/GodotSharp/Tools/nupkgs/(?:GodotSharp(?:Editor)?|Godot\.NET\.Sdk|Godot\.SourceGenerators)\.4\.7\.2\.nupkg$", name))
+                if name == "editor/GodotSharp/Tools/GodotTools.OpenVisualStudio":
+                    allowed = target == "windows-x64" and data.startswith(b"MZ")
                 if not allowed:
                     raise ValueError("Unapproved SDK file")
                 if suffix == ".nupkg":
