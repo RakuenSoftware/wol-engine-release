@@ -115,7 +115,7 @@ class SDKRelease:
                     if suffix == ".nupkg":
                         allowed = bool(re.search(r"/GodotSharp/Tools/nupkgs/(?:GodotSharp(?:Editor)?|Godot\.NET\.Sdk|Godot\.SourceGenerators)\.4\.7\.2\.nupkg$", name))
                 if name == "editor/GodotSharp/Tools/GodotTools.OpenVisualStudio":
-                    allowed = target == "windows-x64" and data.startswith(b"MZ")
+                    allowed = target == "windows-x64" and data.startswith((b"MZ", b"\x7fELF"))
                 if not allowed:
                     raise ValueError("Unapproved SDK file")
                 if suffix == ".nupkg":

@@ -80,6 +80,12 @@ class ReleaseBoundaryTests(unittest.TestCase):
         archive = self.sdk(); archive.with_suffix('.zip.sha256').write_text('0' * 64 + '  ' + archive.name + '\n')
         with self.assertRaises(ValueError): SDKRelease.check_sdk(archive, self.commit, 'linux-x64')
 
+    def test_known_windows_editor_bridge_requires_a_binary(self):
+        name = 'editor/GodotSharp/Tools/GodotTools.OpenVisualStudio'
+        SDKRelease.check_sdk(self.sdk('windows-x64', extra={name: b'\x7fELFfixture'}), self.commit, 'windows-x64')
+        with self.assertRaises(ValueError):
+            SDKRelease.check_sdk(self.sdk('windows-x64', extra={name: b'private text'}), self.commit, 'windows-x64')
+
     def test_checksum_sidecars_cannot_carry_extra_content(self):
         archive = self.sdk()
         with archive.with_suffix('.zip.sha256').open('a') as stream: stream.write('private diagnostic text')
