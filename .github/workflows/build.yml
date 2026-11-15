@@ -35,14 +35,13 @@ jobs:
         env:
           REQUESTED_ENGINE_COMMIT: ${{ inputs.engine_commit }}
           REQUEST_EVENT: ${{ github.event_name }}
-        shell: python
+        shell: bash
         run: |
-          import os
-          from release import SDKRelease
-          override = os.environ['REQUESTED_ENGINE_COMMIT'] if os.environ['REQUEST_EVENT'] == 'workflow_dispatch' else None
-          commit = SDKRelease.requested_commit('.', override)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('commit=' + commit + '\n')
+          if [ "$REQUEST_EVENT" = workflow_dispatch ]; then
+            python release.py resolve-request --commit "$REQUESTED_ENGINE_COMMIT" >> "$GITHUB_OUTPUT"
+          else
+            python release.py resolve-request >> "$GITHUB_OUTPUT"
+          fi
   build:
     needs: request
     strategy:

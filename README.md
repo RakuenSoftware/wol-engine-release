@@ -53,6 +53,9 @@ for software that users execute.
    access. Merging it into `main` automatically starts all three native builds.
    This repository's initial request selects the already-tagged engine revision
    `8fd3e8780c985721730855396de987e59e268fcf`.
+   To retry an unpublished revision through a PR, increment the request's
+   optional positive integer `attempt` field (default: 1). Merging that request
+   starts a fresh run without moving the source tag.
    Manual **Build and publish binary SDKs** runs on `main` remain available for
    retries, using the same exact commit SHA.
    All three native-host SDK jobs must pass. The release contains three ZIP
