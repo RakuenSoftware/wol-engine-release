@@ -1,0 +1,25 @@
+# Private inputs and build outputs must never enter Git.
+engine/
+private-engine/
+_private*/
+runtime/
+native/
+addons/
+managed/
+.dependen*/
+dist/
+*.zip
+*.sha256
+*.dll
+*.exe
+*.so
+*.dylib
+*.pdb
+*.cs
+*.gd
+*.gdshader
+*.gdshaderinc
+*.log
+*.pem
+.env*
+__pycache__/

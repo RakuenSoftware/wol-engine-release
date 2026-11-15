@@ -1,0 +1,137 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: Build and publish binary SDKs
+on:
+  workflow_dispatch:
+    inputs:
+      engine_commit:
+        description: Full commit from the private engine's matching runtime-<SHA> tag
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: sdk-${{ inputs.engine_commit }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-x64
+          - os: windows-2022
+            target: windows-x64
+          - os: macos-15
+            target: macos-universal
+    runs-on: ${{ matrix.os }}
+    env:
+      ENGINE_COMMIT: ${{ inputs.engine_commit }}
+      SDK_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          path: automation
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Audit automation and validate the requested commit
+        shell: bash
+        run: |
+          python automation/release.py check-repository --root automation
+          python -c 'import os,re; assert re.fullmatch("[0-9a-f]{40}",os.environ["ENGINE_COMMIT"])'
+      - name: Temporarily check out the private tagged source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: RakuenSoftware/wol-engine
+          ref: runtime-${{ inputs.engine_commit }}
+          token: ${{ secrets.ENGINE_SOURCE_TOKEN }}
+          path: private-engine
+          submodules: recursive
+          persist-credentials: false
+      - name: Verify the private tag's exact commit
+        working-directory: private-engine
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$ENGINE_COMMIT"
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.403'
+      - run: python -m pip install scons==4.11.1
+      - name: Install Linux tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y g++ pkg-config patch libx11-dev libxrandr-dev libwayland-dev libxkbcommon0 libxcursor1 libxinerama1 libxi6 libgl1
+      - name: Set up Windows compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual C++ build tools are missing' }
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
+          }
+          foreach ($name in @('INCLUDE', 'LIB', 'LIBPATH', 'VCINSTALLDIR', 'VCToolsInstallDir', 'WindowsSdkDir', 'WindowsSDKVersion', 'UniversalCRTSdkDir', 'UCRTVersion')) {
+            $value = [Environment]::GetEnvironmentVariable($name, 'Process')
+            if ($value) { "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append }
+          }
+          "$env:PATH;C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile and qualify the private engine without publishing compiler output
+        shell: python
+        run: |
+          import os, pathlib, subprocess, sys
+          log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'private-sdk-build.log'
+          with log.open('w') as stream:
+              result = subprocess.run([sys.executable, 'scripts/package_runtime.py', os.environ['SDK_TARGET'], '--output', 'dist/sdk', '--release-repository', 'RakuenSoftware/wol-engine-release'], cwd='private-engine', stdout=stream, stderr=subprocess.STDOUT)
+          if result.returncode:
+              raise SystemExit('SDK compilation/qualification failed. Compiler output was withheld; inspect privately.')
+      - name: Audit and copy only approved binary SDK files
+        shell: bash
+        run: python automation/release.py stage --input private-engine/dist --output "$RUNNER_TEMP/approved-sdk" --commit "$ENGINE_COMMIT" --target "$SDK_TARGET"
+      - name: Remove the private checkout and compiler output
+        if: always()
+        shell: python
+        run: |
+          import os, pathlib, shutil
+          shutil.rmtree(pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'private-engine', ignore_errors=True)
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'private-sdk-build.log').unlink(missing_ok=True)
+      - name: Upload only audited archives and checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sdk-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/approved-sdk/*.zip
+            ${{ runner.temp }}/approved-sdk/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      ENGINE_COMMIT: ${{ inputs.engine_commit }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          path: automation
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: incoming
+          merge-multiple: true
+      - name: Independently audit all three SDKs before publication
+        shell: bash
+        run: |
+          python automation/release.py check-repository --root automation
+          python automation/release.py stage --input incoming --output "$RUNNER_TEMP/release-sdk" --commit "$ENGINE_COMMIT"
+      - name: Publish binary assets without engine source access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: gh release create "runtime-$ENGINE_COMMIT" "$RUNNER_TEMP/release-sdk/"*.zip "$RUNNER_TEMP/release-sdk/"*.sha256 --target "$GITHUB_SHA" --prerelease --title "WoL Engine SDK $ENGINE_COMMIT" --notes 'Native Linux, Windows and universal macOS binary SDKs. All three were qualified and independently audited before publication. No implementation source, compiler logs or debug symbols are included. Compiled binaries remain inspectable.'
