@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -106,6 +107,22 @@ class ReleaseBoundaryTests(unittest.TestCase):
         for value in ('', 'main', 'a' * 39, 'a' * 40 + '\n'):
             with self.subTest(override=value), self.assertRaises(ValueError):
                 SDKRelease.requested_commit(self.root, value)
+
+    def test_release_request_cli_emits_only_github_job_output(self):
+        directory = self.root / '.github'; directory.mkdir()
+        request = directory / 'sdk-release.json'
+        request.write_text(json.dumps({'engine_commit': self.commit, 'attempt': 2}))
+        command = [sys.executable, str(Path(__file__).with_name('release.py').resolve()), 'resolve-request', '--root', str(self.root)]
+        result = subprocess.run(command, cwd=self.root, capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, 'commit=' + self.commit + '\n')
+        result = subprocess.run(command + ['--commit', 'b' * 40], cwd=self.root, capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, 'commit=' + 'b' * 40 + '\n')
+        for attempt in (0, -1, True, '2', 100001):
+            request.write_text(json.dumps({'engine_commit': self.commit, 'attempt': attempt}))
+            result = subprocess.run(command, cwd=self.root, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
+            self.assertNotIn('Traceback', result.stderr)
 
     def test_repository_history_keeps_deleted_source_visible_to_the_audit(self):
         repo = self.root / 'repo'; repo.mkdir()

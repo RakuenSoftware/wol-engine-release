@@ -30,8 +30,11 @@ class SDKRelease:
     def requested_commit(cls, root, override=None):
         if override is None:
             request = json.loads((Path(root) / ".github/sdk-release.json").read_text())
-            if not isinstance(request, dict) or set(request) != {"engine_commit"}:
+            if not isinstance(request, dict) or set(request) not in ({"engine_commit"}, {"engine_commit", "attempt"}):
                 raise ValueError("Unexpected release request fields")
+            attempt = request.get("attempt", 1)
+            if type(attempt) is not int or not 1 <= attempt <= 100000:
+                raise ValueError("Release attempt must be a positive integer")
             override = request["engine_commit"]
         if not isinstance(override, str) or not re.fullmatch(r"[0-9a-f]{40}", override):
             raise ValueError("Release requests require a full engine commit")
@@ -198,7 +201,7 @@ class SDKRelease:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("check-repository", "stage"))
+    parser.add_argument("command", choices=("check-repository", "resolve-request", "stage"))
     parser.add_argument("--root", default=".")
     parser.add_argument("--input", type=Path)
     parser.add_argument("--output", type=Path)
@@ -208,9 +211,12 @@ if __name__ == "__main__":
     try:
         if args.command == "check-repository":
             SDKRelease.check_repository(args.root)
+        elif args.command == "resolve-request":
+            print("commit=" + SDKRelease.requested_commit(args.root, args.commit))
         else:
             SDKRelease.stage(args.input, args.output, args.commit, (args.target,) if args.target else tuple(SDKRelease.TARGETS))
     except Exception:
         print("PUBLICATION_POLICY_FAILED: output withheld; inspect privately.", file=sys.stderr)
         sys.exit(1)
-    print("PUBLICATION_POLICY_OK")
+    if args.command != "resolve-request":
+        print("PUBLICATION_POLICY_OK")
