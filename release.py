@@ -44,6 +44,45 @@ class SDKRelease:
         return override
 
     @classmethod
+    def build(cls, source, log, target):
+        """Qualify private inputs; expose only fixed failure categories to public logs."""
+        if target not in cls.TARGETS:
+            raise cls.PolicyError("Unexpected SDK build target")
+        source, log = Path(source).resolve(), Path(log).resolve()
+        with log.open('w') as stream:
+            result = subprocess.run([sys.executable, 'scripts/package_runtime.py', target,
+                                     '--output', 'dist/sdk', '--release-repository',
+                                     'RakuenSoftware/wol-engine-release'],
+                                    cwd=source, stdout=stream, stderr=subprocess.STDOUT)
+        if result.returncode == 0:
+            return
+        # Never echo captured matches, paths, source lines, exception messages or log excerpts.
+        # Each emitted word below is an automation-owned constant, independent of log content.
+        diagnostics = log.read_text(errors='replace')
+        rules = (
+            (r'\berror C1083\b', 'MSVC_INCLUDE_MISSING'),
+            (r'\berror C2039\b', 'MSVC_MEMBER_MISSING'),
+            (r'\berror C2065\b', 'MSVC_IDENTIFIER_MISSING'),
+            (r'\berror C2061\b', 'MSVC_SYNTAX'),
+            (r'\berror C2059\b', 'MSVC_SYNTAX_TOKEN'),
+            (r'\berror C2589\b', 'MSVC_PREPROCESSOR_TOKEN'),
+            (r'\berror C2397\b', 'MSVC_NARROWING'),
+            (r'\berror C2440\b', 'MSVC_CONVERSION'),
+            (r'\berror C2664\b', 'MSVC_ARGUMENT_CONVERSION'),
+            (r'\berror C2665\b', 'MSVC_OVERLOAD'),
+            (r'\berror C2672\b', 'MSVC_NO_MATCHING_OVERLOAD'),
+            (r'\berror LNK(?:2001|2019)\b', 'LINK_SYMBOL_MISSING'),
+            (r'\berror LNK1104\b', 'LINK_INPUT_MISSING'),
+            (r'\berror CS\d{4}\b', 'MANAGED_COMPILATION'),
+            (r'\berror MSB\d{4}\b', 'MANAGED_BUILD'),
+            (r'\b(?:HTTPError|URLError)\b', 'DOWNLOAD'),
+            (r'\b(?:FileNotFoundError|PermissionError)\b', 'BUILD_FILESYSTEM'),
+            (r'BINARY_PROBE_EXIT:', 'BINARY_CONSUMER_PROBE'),
+        )
+        categories = [label for pattern, label in rules if re.search(pattern, diagnostics)]
+        raise cls.PolicyError('SDK build failed: ' + ', '.join(categories or ['UNCLASSIFIED']))
+
+    @classmethod
     def check_repository(cls, root):
         root = Path(root)
         if (root / ".github/sdk-release.json").exists():
@@ -205,7 +244,7 @@ class SDKRelease:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("check-repository", "resolve-request", "stage"))
+    parser.add_argument("command", choices=("check-repository", "resolve-request", "stage", "build"))
     parser.add_argument("--root", default=".")
     parser.add_argument("--input", type=Path)
     parser.add_argument("--output", type=Path)
@@ -217,6 +256,8 @@ if __name__ == "__main__":
             SDKRelease.check_repository(args.root)
         elif args.command == "resolve-request":
             print("commit=" + SDKRelease.requested_commit(args.root, args.commit))
+        elif args.command == "build":
+            SDKRelease.build(args.input, args.output, args.target)
         else:
             SDKRelease.stage(args.input, args.output, args.commit, (args.target,) if args.target else tuple(SDKRelease.TARGETS))
     except SDKRelease.PolicyError as error:

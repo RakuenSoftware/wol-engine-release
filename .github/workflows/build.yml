@@ -107,14 +107,8 @@ jobs:
           }
           "$env:PATH;C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Compile and qualify the private engine without publishing compiler output
-        shell: python
-        run: |
-          import os, pathlib, subprocess, sys
-          log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'private-sdk-build.log'
-          with log.open('w') as stream:
-              result = subprocess.run([sys.executable, 'scripts/package_runtime.py', os.environ['SDK_TARGET'], '--output', 'dist/sdk', '--release-repository', 'RakuenSoftware/wol-engine-release'], cwd='private-engine', stdout=stream, stderr=subprocess.STDOUT)
-          if result.returncode:
-              raise SystemExit('SDK compilation/qualification failed. Compiler output was withheld; inspect privately.')
+        shell: bash
+        run: python automation/release.py build --input private-engine --output "$RUNNER_TEMP/private-sdk-build.log" --target "$SDK_TARGET"
       - name: Audit and copy only approved binary SDK files
         shell: bash
         run: python automation/release.py stage --input private-engine/dist --output "$RUNNER_TEMP/approved-sdk" --commit "$ENGINE_COMMIT" --target "$SDK_TARGET"
