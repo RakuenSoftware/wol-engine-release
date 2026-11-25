@@ -18,7 +18,7 @@ repository's Releases page.
 - Each fresh GitHub-hosted Linux, Windows and Mac runner temporarily checks out
   an exact private `runtime-<40-character SHA>` tag into a separate sibling
   directory. The tag's resolved commit must match the requested SHA.
-- Compiler output goes to a temporary private file. Failure reports are generic.
+- Compiler output goes to a temporary private file. Failure reports contain only fixed automation-owned categories (for example, a missing include or an overload failure), never captured diagnostic text, paths, source lines or log excerpts.
   The workflow removes the source checkout and compiler output before uploading
   anything. There are no build caches, source artifacts or diagnostic uploads.
 - The publication audit verifies archive identity, provenance, every file hash,

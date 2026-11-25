@@ -2,17 +2,49 @@
 import hashlib
 import io
 import json
+import shutil
 from pathlib import Path
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 from release import SDKRelease
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
+    def test_build_failure_exposes_only_fixed_categories(self):
+        source = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, source)
+        log = source / 'private.log'
+        private = 'private-source.cpp(41): error C2672: private_function: private operands\nerror CS9999: secret text\n'
+        def failed(command, **kwargs):
+            kwargs['stdout'].write(private)
+            self.assertEqual(kwargs['cwd'], source.resolve())
+            self.assertEqual(command[1:3], ['scripts/package_runtime.py', 'windows-x64'])
+            return subprocess.CompletedProcess(command, 1)
+        with patch('release.subprocess.run', side_effect=failed):
+            with self.assertRaises(SDKRelease.PolicyError) as failure:
+                SDKRelease.build(source, log, 'windows-x64')
+        self.assertEqual(str(failure.exception), 'SDK build failed: MSVC_NO_MATCHING_OVERLOAD, MANAGED_COMPILATION')
+        self.assertEqual(log.read_text(), private)
+
+    def test_build_unknown_failure_and_success_do_not_expose_output(self):
+        source = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, source)
+        log = source / 'private.log'
+        def result(command, **kwargs):
+            kwargs['stdout'].write('unrecognized private compiler output')
+            return subprocess.CompletedProcess(command, result.code)
+        with patch('release.subprocess.run', side_effect=result):
+            result.code = 1
+            with self.assertRaisesRegex(SDKRelease.PolicyError, '^SDK build failed: UNCLASSIFIED$'):
+                SDKRelease.build(source, log, 'windows-x64')
+            result.code = 0
+            self.assertIsNone(SDKRelease.build(source, log, 'windows-x64'))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
